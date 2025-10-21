@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simple Missing/Found Board</title>
+<style>
+body{font-family:sans-serif;background:#f6f6f6;margin:0;padding:0;}
+header{background:#111827;color:white;padding:10px;text-align:center;}
+.container{max-width:800px;margin:auto;padding:10px;}
+.tabs{display:flex;gap:10px;margin:10px 0;}
+.tab{flex:1;padding:10px;text-align:center;background:white;cursor:pointer;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.2);}
+.tab.active{background:#111827;color:white;}
+.card{background:white;padding:10px;margin-bottom:10px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.2);}
+input,textarea{width:100%;padding:8px;margin:5px 0;border-radius:6px;border:1px solid #ccc;box-sizing:border-box;}
+button{padding:8px 12px;border:none;border-radius:6px;background:#111827;color:white;cursor:pointer;margin-top:5px;}
+img{max-width:100%;border-radius:6px;margin-top:5px;}
+.reply-box{display:flex;gap:5px;margin-top:5px;}
+.reply-box input{flex:1;}
+.reply-box button{flex-shrink:0;}
+</style>
+</head>
+<body>
+<header>
+<h1>Missing & Found Board</h1>
+<p>Report missing items or report found items and reply</p>
+</header>
+<div class="container">
+<div class="tabs">
+<div class="tab active" id="tab-missing">Report Missing</div>
+<div class="tab" id="tab-found">Report Found</div>
+</div>
+
+<div id="form-missing">
+<input type="text" id="m_name" placeholder="Aapka naam (optional)">
+<input type="text" id="m_title" placeholder="Title (eg. Lost Dog / Missing Rahul)">
+<input type="text" id="m_seen" placeholder="Last seen (location/date)">
+<textarea id="m_desc" placeholder="Description"></textarea>
+<input type="text" id="m_contact" placeholder="Contact (phone/email)">
+<input type="file" id="m_file" accept="image/*">
+<button id="publishMissing">Publish Missing</button>
+</div>
+
+<div id="form-found" style="display:none">
+<input type="text" id="f_name" placeholder="Aapka naam (optional)">
+<input type="text" id="f_title" placeholder="Title (eg. Found Dog / Found Person)">
+<input type="text" id="f_seen" placeholder="Found at (location/date)">
+<textarea id="f_desc" placeholder="Description"></textarea>
+<input type="text" id="f_contact" placeholder="Your contact">
+<input type="file" id="f_file" accept="image/*">
+<button id="publishFound">Publish Found</button>
+</div>
+
+<div id="posts"></div>
+</div>
+
+<script>
+// Tab switching
+document.getElementById('tab-missing').onclick = ()=>{
+document.getElementById('form-missing').style.display='block';
+document.getElementById('form-found').style.display='none';
+document.getElementById('tab-missing').classList.add('active');
+document.getElementById('tab-found').classList.remove('active');
+};
+document.getElementById('tab-found').onclick = ()=>{
+document.getElementById('form-missing').style.display='none';
+document.getElementById('form-found').style.display='block';
+document.getElementById('tab-found').classList.add('active');
+document.getElementById('tab-missing').classList.remove('active');
+};
+
+// LocalStorage helper
+function loadPosts(){return JSON.parse(localStorage.getItem('board_posts')||'[]');}
+function savePosts(p){localStorage.setItem('board_posts',JSON.stringify(p));}
+function readFileAsDataURL(input){return new Promise(res=>{
+if(!input.files[0]) return res(null);
+const reader=new FileReader();reader.onload=()=>res(reader.result);reader.readAsDataURL(input.files[0]);});}
+
+// Publish missing
+document.getElementById('publishMissing').onclick=async()=>{
+const title=document.getElementById('m_title').value.trim(); if(!title){alert('Title required'); return;}
+const img=await readFileAsDataURL(document.getElementById('m_file'));
+let posts=loadPosts();
+posts.push({type:'Missing',name:document.getElementById('m_name').value,title,title,lastseen:document.getElementById('m_seen').value,desc:document.getElementById('m_desc').value,contact:document.getElementById('m_contact').value,img,imgdata:img,replies:[],ts:Date.now()});
+savePosts(posts);render();document.getElementById('form-missing').reset();};
+
+// Publish found
+document.getElementById('publishFound').onclick=async()=>{
+const title=document.getElementById('f_title').value.trim(); if(!title){alert('Title required'); return;}
+const img=await readFileAsDataURL(document.getElementById('f_file'));
+let posts=loadPosts();
+posts.push({type:'Found',name:document.getElementById('f_name').value,title:title,lastseen:document.getElementById('f_seen').value,desc:document.getElementById('f_desc').value,contact:document.getElementById('f_contact').value,img:img,replies:[],ts:Date.now()});
+savePosts(posts);render();document.getElementById('form-found').reset();};
+
+// Render
+function render(){
+const postsEl=document.getElementById('posts');postsEl.innerHTML='';
+let posts=loadPosts().sort((a,b)=>b.ts-a.ts);
+if(posts.length===0){postsEl.innerHTML='<p>No reports yet.</p>'; return;}
+posts.forEach(p=>{
+const div=document.createElement('div');div.className='card';
+div.innerHTML=`<strong>${p.title} (${p.type})</strong><br>
+<span style="font-size:12px;">By: ${p.name||'Anonymous'} | Last seen/found: ${p.lastseen}</span>
+<p>${p.desc}</p>
+${p.img?`<img src="${p.img}">`:''}
+<p>Contact: ${p.contact||'hidden'}</p>
+<div id="replies-${p.ts}"></div>
+<div class="reply-box">
+<input id="rmsg-${p.ts}" placeholder="Reply message">
+<input id="rcontact-${p.ts}" placeholder="Your contact (optional)">
+<button onclick="sendReply(${p.ts})">Send</button>
+</div>`;
+postsEl.appendChild(div);
+renderReplies(p);
+});
+}
+
+function renderReplies(p){
+const repliesEl=document.getElementById(`replies-${p.ts}`);
+(p.replies||[]).forEach(r=>{
+const rdiv=document.createElement('div');rdiv.style.borderTop='1px solid #ccc';rdiv.style.padding='4px';
+rdiv.innerHTML=`<small>${r.name||'Visitor'}: ${r.msg} ${r.contact?` | Contact: ${r.contact}`:''}</small>`;
+repliesEl.appendChild(rdiv);
+});
+}
+
+function sendReply(ts){
+const msg=document.getElementById(`rmsg-${ts}`).value.trim();
+const contact=document.getElementById(`rcontact-${ts}`).value.trim();
+if(!msg && !contact){alert('Enter reply or contact'); return;}
+let posts=loadPosts();
+let idx=posts.findIndex(p=>p.ts===ts); if(idx===-1)return;
+posts[idx].replies=posts[idx].replies||[]; posts[idx].replies.push({name:'Visitor',msg,contact,ts:Date.now()});
+savePosts(posts);render();
+document.getElementById(`rmsg-${ts}`).value=''; document.getElementById(`rcontact-${ts}`).value='';
+}
+
+// Initial render
+render();
+</script>
+</body>
+</html>
